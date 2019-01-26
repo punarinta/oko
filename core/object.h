@@ -1,6 +1,8 @@
 #ifndef _OKO_OBJECT_H_
 #define _OKO_OBJECT_H_ 1
 
+#define MAX_OBJECTS 256
+
 #include <stdbool.h>
 #include <string.h>
 #include <stdlib.h>

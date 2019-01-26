@@ -40,8 +40,7 @@ int main(void)
     spriteLamp = sprite_Load("data/sprites/lamp1.spr");
     spriteFireball = sprite_Load("data/sprites/fireball1.spr");
 
-    gameObjects = object_InitArray(256);
-    gameObjectsCount = 256;
+    gameObjects = object_InitArray(MAX_OBJECTS);
 
     fDepthBuffer = malloc(sizeof(float) * screen->width);
 
@@ -77,6 +76,19 @@ int main(void)
 
             case KEY_RIGHT:
                 fPlayerA += 0.05;
+                break;
+
+            case 'q':
+                for (int i = 0; i < MAX_OBJECTS; i++)
+                {
+                    object_t *o = gameObjects + i;
+                    if (!o->on)
+                    {
+                        float fNoise = (((float) rand() / (float) RAND_MAX) - 0.5) * 0.1;
+                        object_Set(gameObjects + i, fPlayerX, fPlayerY, sinf(fPlayerA + fNoise) * 0.2, cosf(fPlayerA + fNoise) * 0.2, spriteFireball);
+                        break;
+                    }
+                }
                 break;
         }
     }
@@ -194,7 +206,7 @@ void render()
         }
     }
 
-    for (int i = 0; i < gameObjectsCount; i++)
+    for (int i = 0; i < MAX_OBJECTS; i++)
     {
         object_t *object = gameObjects + i;
 

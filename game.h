@@ -27,7 +27,6 @@
 screen_t *screen;
 
 object_t *gameObjects = NULL;
-unsigned int gameObjectsCount = 0;
 
 void setTimer(void);
 void setSignals(void);
