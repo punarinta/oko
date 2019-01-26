@@ -1,36 +1,6 @@
-#include <locale.h>
-#include <ncurses.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <unistd.h>
-#include <sys/ioctl.h>
-#include <sys/time.h>
-#include <signal.h>
-#include <string.h>
-#include <time.h>
-#include <math.h>
+#include "game.h"
 
-#ifndef M_PI
-#define M_PI           3.14159265358979323846
-#endif
-
-#define TIMESTEP 16000
-
-void setTimer(void);
-void setSignals(void);
-void getGeometry(int *rows, int *cols);
-void handler(int signum);
-
-wchar_t *pBuffer;
-wchar_t *pBufferSky;
 bool isRendering = false;
-
-WINDOW *mainWin;
-
-int nScreenWidth = 120;
-int nScreenHeight = 40;
-int nMapWidth = 16;
-int nMapHeight = 16;
 
 float fPlayerX = 8.0;
 float fPlayerY = 8.0;
@@ -38,33 +8,11 @@ float fPlayerA = 0.0;
 float fFOV = 3.14159 / 4.0;
 float fDepth = 16.0 * 1.41;
 float fSpeed = 0.1;
+
 unsigned short frameCount = 0;
 unsigned short frameDrop = 0;
 
-char *map = "\
-################\
-#..............#\
-#..............#\
-#....#.........#\
-#..............#\
-#..............#\
-#..............#\
-#..............#\
-#..............#\
-#..............#\
-#..............#\
-#..............#\
-#..............#\
-#..............#\
-#..............#\
-## # # # # # ###\
-";
-
-typedef struct _pair
-{
-  float first;
-  float second;
-} pair;
+sprite_t *spriteWall;
 
 void offsetMove(float xTest, float yTest)
 {
@@ -80,38 +28,14 @@ void offsetMove(float xTest, float yTest)
 
 int main(void)
 {
-    setlocale(LC_ALL, "");
-    getGeometry(&nScreenWidth, &nScreenHeight);
-
-    if ((mainWin = initscr()) == NULL)
-    {
-        fprintf(stderr, "Renderer initialization error.\n");
-        exit(-1);
-    }
-
-    start_color();
-
-    init_pair(1, COLOR_WHITE, COLOR_BLACK);
-    init_pair(2, COLOR_WHITE, COLOR_CYAN);
-
-    noecho();
-    keypad(mainWin, true);
+    screen = screen_Init();
+    colors_Init();
 
     srand((unsigned) time(NULL));
     setTimer();
     setSignals();
 
-    // init env
-    curs_set(0);
-    refresh();
-
-
-    pBuffer = (wchar_t *) malloc(nScreenWidth * nScreenHeight * sizeof(wchar_t));
-    pBufferSky = (wchar_t *) malloc(nScreenWidth/* * nScreenHeight*/ * sizeof(wchar_t));
-
-    memset(pBufferSky, '.', sizeof(wchar_t) * nScreenWidth);
-
-    float xTest = 0, yTest = 0;
+    spriteWall = sprite_Load("data/sprites/wall1.spr");
 
     while (1)
     {
@@ -148,11 +72,6 @@ int main(void)
     return 0;
 }
 
-int pairComparator(pair *a, pair *b)
-{
-    return a->first < b->first;
-}
-
 void render()
 {
     if (isRendering)
@@ -169,13 +88,13 @@ void render()
 
     isRendering = true;
 
-    for (int x = 0; x < nScreenWidth; x++)
+    for (int x = 0; x < screen->width; x++)
     {
         // For each column, calculate the projected ray angle into world space
-        float fRayAngle = (fPlayerA - fFOV / 2.0) + ((float)x / (float)nScreenWidth) * fFOV;
+        float fRayAngle = (fPlayerA - fFOV / 2.0) + ((float)x / (float)screen->width) * fFOV;
 
         // Find distance to wall
-        float fStepSize = 0.05;          // Increment size for ray casting, decrease to increase
+        float fStepSize = 0.02;          // Increment size for ray casting, decrease to increase
         float fDistanceToWall = 0.0; //              resolution
 
         bool bHitWall = false;        // Set when ray hits wall block
@@ -183,6 +102,9 @@ void render()
 
         float fEyeX = sinf(fRayAngle); // Unit vector for ray in player space
         float fEyeY = cosf(fRayAngle);
+
+        float fSampleX = 0.0;
+        bool bLit = false;
 
         // Incrementally cast ray from player, along ray angle, testing for
         // intersection with a block
@@ -206,139 +128,66 @@ void render()
                     // Ray has hit wall
                     bHitWall = true;
 
-					/*pair pairs[4];
+                    // Determine where ray has hit wall. Break Block boundary
+                    // int 4 line segments
+                    float fBlockMidX = (float) nTestX + 0.5;
+                    float fBlockMidY = (float) nTestY + 0.5;
 
-					// Test each corner of hit tile, storing the distance from
-					// the player, and the calculated dot product of the two rays
-					for (int tx = 0; tx < 2; tx++)
-					{
-						for (int ty = 0; ty < 2; ty++)
-						{
-							// Angle of corner to eye
-							float vy = (float) nTestY + ty - fPlayerY;
-							float vx = (float) nTestX + tx - fPlayerX;
-							float d = sqrt(vx * vx + vy * vy);
-							float dot = fEyeX * vx / d + fEyeY * vy / d;
-							pair p = {d, dot};
-							pairs[tx * 2 + ty] = p;
-						}
-					}
+                    float fTestPointX = fPlayerX + fEyeX * fDistanceToWall;
+                    float fTestPointY = fPlayerY + fEyeY * fDistanceToWall;
 
-					// Sort Pairs from closest to furthest
-					qsort(pairs, 4, sizeof(pair), pairComparator);
+                    float fTestAngle = atan2f(fTestPointY - fBlockMidY, fTestPointX - fBlockMidX);
 
-					// First two/three are closest (we will never see all four)
-					float fBound = 0.003;
-					if (acos(pairs[0].second) < fBound) bBoundary = true;
-					if (acos(pairs[1].second) < fBound) bBoundary = true;
-                    if (acos(pairs[2].second) < fBound) bBoundary = true;*/
+                    if (fTestAngle >= -M_PI * 0.25 && fTestAngle < M_PI * 0.25)  fSampleX = fTestPointY - (float) nTestY;
+                    if (fTestAngle >= M_PI * 0.25 && fTestAngle < M_PI * 0.75)   fSampleX = fTestPointX - (float) nTestX;
+                    if (fTestAngle < -M_PI * 0.25 && fTestAngle >= -M_PI * 0.75) fSampleX = fTestPointX - (float) nTestX;
+                    if (fTestAngle >= M_PI * 0.75 || fTestAngle < -M_PI * 0.75)  fSampleX = fTestPointY - (float) nTestY;
                 }
             }
         }
 
         // Calculate distance to ceiling and floor
-        float nCeiling = (float) (nScreenHeight / 2.0) - nScreenHeight / ((float) fDistanceToWall);
-        float nFloor = nScreenHeight - nCeiling;
+        float nCeiling = (float) (screen->height / 2.0) - screen->height / ((float) fDistanceToWall);
+        float nFloor = screen->height - nCeiling;
 
-        // Shader walls based on distance
-        wchar_t nShade = ' ';
+        // fDepthBuffer[x] = fDistanceToWall;
 
-        if (fDistanceToWall <= fDepth / 4.0)             nShade = 0x2588;    // Very close
-        else if (fDistanceToWall < fDepth / 3.0)         nShade = 0x2593;
-        else if (fDistanceToWall < fDepth / 2.0)         nShade = 0x2592;
-        else if (fDistanceToWall < fDepth)               nShade = 0x2591;
-        else nShade = ' ';
-
-        if (bBoundary)        nShade = 0x2502;             // Black it out
-
-        for (int y = 0; y < nScreenHeight; y++)
+        for (int y = 0; y < screen->height; y++)
         {
             // Each Row
             if (y <= nCeiling)
             {
-                pBuffer[y * nScreenWidth + x] = ' ';
+                screen_Draw(screen, x, y, PIXEL_SOLID, 117);
             }
             else if (y > nCeiling && y <= nFloor)
             {
-                //if (fabs(y - nCeiling) < 0.75) pBuffer[y * nScreenWidth + x] = 0x2584;
-                /*else*/ pBuffer[y * nScreenWidth + x] = nShade;
+                // Draw Wall
+                if (fDistanceToWall < fDepth)
+                {
+                    float fSampleY = ((float) y - (float) nCeiling) / ((float) nFloor - (float) nCeiling);
+                    screen_Draw(screen, x, y, sprite_SampleGlyph(spriteWall, fSampleX, fSampleY), sprite_SampleColor(spriteWall, fSampleX, fSampleY));
+                }
+                else
+                    screen_Draw(screen, x, y, PIXEL_SOLID, 117);
             }
             else // Floor
             {
                 // Shade floor based on distance
-                float xPers = 0.3 * asinf(fabs(nScreenWidth / 2 - x) / nScreenWidth);
+                float xPers = 0.3 * asinf(fabs(screen->width / 2 - x) / screen->width);
                 float walkEffect = ( ((int) ((fPlayerX + fPlayerY + fPlayerA * 50) * 10)) % 2) * 0.003;
-                float b = 1.0 - (((float) y - nScreenHeight / 2.0) / ((float) nScreenHeight / 2.0)) + xPers - walkEffect;
+                float b = 1.0 - (((float) y - screen->height / 2.0) / ((float) screen->height / 2.0)) + xPers; //  - walkEffect;
 
-                if (b < 0.05)           nShade = 0x2588;
-                else if (b < 0.2)       nShade = 0x2587;
-                else if (b < 0.35)      nShade = 0x2586;
-                else if (b < 0.5)       nShade = 0x2585;
-                else if (b < 0.7)       nShade = 0x2584;
-                else if (b < 0.85)      nShade = 0x2583;
-                else if (b < 1.0)       nShade = 0x2582;
-                else if (b < 1.15)      nShade = 0x2581;
-                else                    nShade = ' ';
-
-                pBuffer[y * nScreenWidth + x] = nShade;
+                screen_Draw(screen, x, y, PIXEL_SOLID, 58);
             }
         }
     }
 
-    attron(COLOR_PAIR(1));
-    mvaddnwstr(0, 0, pBuffer, nScreenWidth * nScreenHeight);
-
-    attron(COLOR_PAIR(2));
-    for (int y = 0; y < nScreenHeight / 2; y++)
-    {
-        int skyStartX = -1;
-        for (int x = 0; x < nScreenWidth; x++)
-        {
-            if (skyStartX == -1 && pBuffer[y * nScreenWidth + x] == ' ')
-            {
-                skyStartX = x;
-                continue;
-            }
-            if (skyStartX != -1 && pBuffer[y * nScreenWidth + x] != ' ')
-            {
-                mvaddnwstr(y, skyStartX, pBufferSky, x - skyStartX);
-                skyStartX = -1;
-            }
-        }
-
-        if (skyStartX != -1)
-        {
-            mvaddnwstr(y, skyStartX, pBufferSky, nScreenWidth - skyStartX);
-        }
-    }
-
+    screen_Flush(screen);
     mvprintw(0, 0, "FPS = %d", 60 - frameDrop);
 
     refresh();
 
     isRendering = false;
-}
-
-wchar_t *compositor(wchar_t *low, wchar_t *high)
-{
-    for (unsigned int i = 0; i < nScreenWidth * nScreenHeight; i++)
-    {
-
-    }
-}
-
-void getGeometry(int *width, int *height)
-{
-    struct winsize ws;
-
-    if (ioctl(0, TIOCGWINSZ, &ws) < 0)
-    {
-        perror("couldn't get window size");
-        exit(EXIT_FAILURE);
-    }
-
-    *height = ws.ws_row;
-    *width = ws.ws_col;
 }
 
 void setSignals(void)
@@ -380,11 +229,8 @@ void handler(int signum)
 
         case SIGTERM:
         case SIGINT:
-            delwin(mainWin);
-            endwin();
-            refresh();
-            free(pBuffer);
-            free(pBufferSky);
+            sprite_Destroy(spriteWall);
+            screen_Destroy(screen);
             exit(EXIT_SUCCESS);
     }
 }
