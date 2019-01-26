@@ -75,6 +75,7 @@ void screen_Flush(screen_t *screen)
     for (int y = 0; y < screen->height; y++) for (int x = 0; x < screen->width; x++)
     {
         wc[0] = screen->buffer[y * screen->width + x].c;
+        attron(COLOR_PAIR(screen->buffer[y * screen->width + x].cp));
         mvaddnwstr(y, x, wc, 1);
     }
 }
