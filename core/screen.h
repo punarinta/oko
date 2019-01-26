@@ -1,6 +1,9 @@
 #ifndef _OKO_SCREEN_H_
 #define _OKO_SCREEN_H_ 1
 
+#define PIXEL_SOLID 0x2588
+#define PIXEL_EMPTY 0x0020
+
 #include <ncurses.h>
 
 typedef struct _pixel_t_
