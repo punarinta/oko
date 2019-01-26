@@ -8,11 +8,12 @@ float fPlayerA = 0.0;
 float fFOV = 3.14159 / 4.0;
 float fDepth = 16.0 * 1.41;
 float fSpeed = 0.1;
+float *fDepthBuffer = NULL;
 
 unsigned short frameCount = 0;
 unsigned short frameDrop = 0;
 
-sprite_t *spriteWall;
+sprite_t *spriteWall, *spriteLamp, *spriteFireball;
 
 void offsetMove(float xTest, float yTest)
 {
@@ -36,6 +37,17 @@ int main(void)
     setSignals();
 
     spriteWall = sprite_Load("data/sprites/wall1.spr");
+    spriteLamp = sprite_Load("data/sprites/lamp1.spr");
+    spriteFireball = sprite_Load("data/sprites/fireball1.spr");
+
+    gameObjects = object_InitArray(256);
+    gameObjectsCount = 256;
+
+    fDepthBuffer = malloc(sizeof(float) * screen->width);
+
+    object_Set(gameObjects + 0, 12, 13.5, 0, 0, spriteLamp);
+    object_Set(gameObjects + 1, 12, 12.5, 0, 0, spriteLamp);
+    object_Set(gameObjects + 2, 12, 11.5, 0, 0, spriteLamp);
 
     while (1)
     {
@@ -91,7 +103,7 @@ void render()
     for (int x = 0; x < screen->width; x++)
     {
         // For each column, calculate the projected ray angle into world space
-        float fRayAngle = (fPlayerA - fFOV / 2.0) + ((float)x / (float)screen->width) * fFOV;
+        float fRayAngle = (fPlayerA - fFOV / 2.0) + ((float) x / (float) screen->width) * fFOV;
 
         // Find distance to wall
         float fStepSize = 0.02;          // Increment size for ray casting, decrease to increase
@@ -150,7 +162,7 @@ void render()
         float nCeiling = (float) (screen->height / 2.0) - screen->height / ((float) fDistanceToWall);
         float nFloor = screen->height - nCeiling;
 
-        // fDepthBuffer[x] = fDistanceToWall;
+        fDepthBuffer[x] = fDistanceToWall;
 
         for (int y = 0; y < screen->height; y++)
         {
@@ -178,6 +190,72 @@ void render()
                 float b = 1.0 - (((float) y - screen->height / 2.0) / ((float) screen->height / 2.0)) + xPers; //  - walkEffect;
 
                 screen_Draw(screen, x, y, PIXEL_SOLID, 58);
+            }
+        }
+    }
+
+
+    for (int i = 0; i < gameObjectsCount; i++)
+    {
+        // TODO: change onto a pointer!
+        object_t object = gameObjects[i];
+
+        if (!object.on)
+        {
+            continue;
+        }
+
+        // Update Object Physics
+        object.x += object.vx;
+        object.y += object.vy;
+
+        // Check if object is inside wall - set flag for removal
+        if (map[(int) object.x * nMapWidth + (int) object.y] == '#') object.on = false;
+
+        // Can object be seen?
+        float fVecX = object.x - fPlayerX;
+        float fVecY = object.y - fPlayerY;
+        float fDistanceFromPlayer = sqrtf(fVecX*fVecX + fVecY*fVecY);
+
+        float fEyeX = sinf(fPlayerA);
+        float fEyeY = cosf(fPlayerA);
+
+        // Calculate angle between lamp and players feet, and players looking direction
+        // to determine if the lamp is in the players field of view
+        float fObjectAngle = atan2f(fEyeY, fEyeX) - atan2f(fVecY, fVecX);
+
+        if (fObjectAngle < -M_PI) fObjectAngle += 2.0 * M_PI;
+        if (fObjectAngle > M_PI)  fObjectAngle -= 2.0 * M_PI;
+
+        bool bInPlayerFOV = fabs(fObjectAngle) < fFOV / 2.0;
+
+        if (bInPlayerFOV && fDistanceFromPlayer >= 0.5 && fDistanceFromPlayer < fDepth && object.on)
+        {
+            float fObjectCeiling = (float) (screen->height / 2.0) - screen->height / ((float) fDistanceFromPlayer);
+            float fObjectFloor = screen->height - fObjectCeiling;
+            float fObjectHeight = fObjectFloor - fObjectCeiling;
+            float fObjectAspectRatio = (float) object.sprite->height / (float) object.sprite->width;
+            float fObjectWidth = fObjectHeight / fObjectAspectRatio;
+            float fMiddleOfObject = (0.5 * (fObjectAngle / (fFOV / 2.0)) + 0.5) * (float) screen->width;
+
+            // Draw Lamp
+            for (float lx = 0; lx < fObjectWidth; lx++)
+            {
+                for (float ly = 0; ly < fObjectHeight; ly++)
+                {
+                    float fSampleX = lx / fObjectWidth;
+                    float fSampleY = ly / fObjectHeight;
+                    wchar_t c = sprite_SampleGlyph(object.sprite, fSampleX, fSampleY);
+                    int nObjectColumn = (int) (fMiddleOfObject + lx - fObjectWidth / 2.0);
+                    if (nObjectColumn >= 0 && nObjectColumn < screen->width)
+                    {
+                        if (c != L' ' && fDepthBuffer[nObjectColumn] >= fDistanceFromPlayer)
+                        {
+                            screen_Draw(screen, nObjectColumn, fObjectCeiling + ly, c, sprite_SampleColor(object.sprite, fSampleX, fSampleY));
+                            fDepthBuffer[nObjectColumn] = fDistanceFromPlayer;
+                        }
+                    }
+                }
             }
         }
     }
@@ -229,7 +307,11 @@ void handler(int signum)
 
         case SIGTERM:
         case SIGINT:
+            if (fDepthBuffer) free(fDepthBuffer);
+            if (gameObjects) free(gameObjects);
             sprite_Destroy(spriteWall);
+            sprite_Destroy(spriteLamp);
+            sprite_Destroy(spriteFireball);
             screen_Destroy(screen);
             exit(EXIT_SUCCESS);
     }

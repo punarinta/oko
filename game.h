@@ -22,8 +22,12 @@
 #include "core/colors.h"
 #include "core/sprite.h"
 #include "core/map.h"
+#include "core/object.h"
 
 screen_t *screen;
+
+object_t *gameObjects = NULL;
+unsigned int gameObjectsCount = 0;
 
 void setTimer(void);
 void setSignals(void);
