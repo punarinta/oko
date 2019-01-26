@@ -194,27 +194,25 @@ void render()
         }
     }
 
-
     for (int i = 0; i < gameObjectsCount; i++)
     {
-        // TODO: change onto a pointer!
-        object_t object = gameObjects[i];
+        object_t *object = gameObjects + i;
 
-        if (!object.on)
+        if (!object->on)
         {
             continue;
         }
 
         // Update Object Physics
-        object.x += object.vx;
-        object.y += object.vy;
+        object->x += object->vx;
+        object->y += object->vy;
 
         // Check if object is inside wall - set flag for removal
-        if (map[(int) object.x * nMapWidth + (int) object.y] == '#') object.on = false;
+        if (map[(int) object->x * nMapWidth + (int) object->y] == '#') object->on = false;
 
         // Can object be seen?
-        float fVecX = object.x - fPlayerX;
-        float fVecY = object.y - fPlayerY;
+        float fVecX = object->x - fPlayerX;
+        float fVecY = object->y - fPlayerY;
         float fDistanceFromPlayer = sqrtf(fVecX*fVecX + fVecY*fVecY);
 
         float fEyeX = sinf(fPlayerA);
@@ -229,12 +227,12 @@ void render()
 
         bool bInPlayerFOV = fabs(fObjectAngle) < fFOV / 2.0;
 
-        if (bInPlayerFOV && fDistanceFromPlayer >= 0.5 && fDistanceFromPlayer < fDepth && object.on)
+        if (bInPlayerFOV && fDistanceFromPlayer >= 0.5 && fDistanceFromPlayer < fDepth && object->on)
         {
             float fObjectCeiling = (float) (screen->height / 2.0) - screen->height / ((float) fDistanceFromPlayer);
             float fObjectFloor = screen->height - fObjectCeiling;
             float fObjectHeight = fObjectFloor - fObjectCeiling;
-            float fObjectAspectRatio = (float) object.sprite->height / (float) object.sprite->width;
+            float fObjectAspectRatio = (float) object->sprite->height / (float) object->sprite->width;
             float fObjectWidth = fObjectHeight / fObjectAspectRatio;
             float fMiddleOfObject = (0.5 * (fObjectAngle / (fFOV / 2.0)) + 0.5) * (float) screen->width;
 
@@ -245,13 +243,13 @@ void render()
                 {
                     float fSampleX = lx / fObjectWidth;
                     float fSampleY = ly / fObjectHeight;
-                    wchar_t c = sprite_SampleGlyph(object.sprite, fSampleX, fSampleY);
+                    wchar_t c = sprite_SampleGlyph(object->sprite, fSampleX, fSampleY);
                     int nObjectColumn = (int) (fMiddleOfObject + lx - fObjectWidth / 2.0);
                     if (nObjectColumn >= 0 && nObjectColumn < screen->width)
                     {
                         if (c != L' ' && fDepthBuffer[nObjectColumn] >= fDistanceFromPlayer)
                         {
-                            screen_Draw(screen, nObjectColumn, fObjectCeiling + ly, c, sprite_SampleColor(object.sprite, fSampleX, fSampleY));
+                            screen_Draw(screen, nObjectColumn, fObjectCeiling + ly, c, sprite_SampleColor(object->sprite, fSampleX, fSampleY));
                             fDepthBuffer[nObjectColumn] = fDistanceFromPlayer;
                         }
                     }
