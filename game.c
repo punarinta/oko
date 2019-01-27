@@ -78,7 +78,7 @@ int main(void)
                 fPlayerA += 0.05;
                 break;
 
-            case 'q':
+            case ' ':
                 for (int i = 0; i < MAX_OBJECTS; i++)
                 {
                     object_t *o = gameObjects + i;
